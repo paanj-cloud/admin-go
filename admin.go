@@ -44,7 +44,7 @@ func (c *AdminHttpClient) Request(method, path string, body interface{}) (map[st
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-secret-key", c.secretKey)
+	req.Header.Set("X-API-Key", c.secretKey) // JS SDK uses X-API-Key for admin secret
 
 	resp, err := c.client.Do(req)
 	if err != nil {
