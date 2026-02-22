@@ -144,20 +144,29 @@ func (c *AdminWebSocketClient) listen() {
 		}
 
 		var eventData struct {
-			Type string      `json:"type"`
-			Data interface{} `json:"data"`
+			Type       string      `json:"type"`
+			Event      string      `json:"event"`
+			Resource   string      `json:"resource"`
+			ResourceID string      `json:"resourceId"`
+			Data       interface{} `json:"data"`
 		}
 
 		if err := json.Unmarshal(message, &eventData); err != nil {
 			continue
 		}
 
-		c.mu.Lock()
-		handlers := c.eventHandlers[eventData.Type]
-		c.mu.Unlock()
-
-		for _, handler := range handlers {
-			go handler(eventData.Data)
+		switch eventData.Type {
+		case "admin.event":
+			// Emit global event key (e.g. message.create).
+			if eventData.Event != "" {
+				c.Emit(eventData.Event, eventData.Data)
+			}
+			// Emit scoped resource event key (e.g. conversation:<id>:message.create).
+			if eventData.Resource != "" && eventData.ResourceID != "" && eventData.Event != "" {
+				c.Emit(fmt.Sprintf("%s:%s:%s", eventData.Resource, eventData.ResourceID, eventData.Event), eventData.Data)
+			}
+		default:
+			c.Emit(eventData.Type, eventData.Data)
 		}
 	}
 }
@@ -186,10 +195,26 @@ func (c *AdminWebSocketClient) IsConnectedStatus() bool {
 }
 
 func (c *AdminWebSocketClient) Subscribe(subscription interface{}) error {
+	if payload, ok := subscription.(map[string]interface{}); ok {
+		if _, hasType := payload["type"]; hasType {
+			return c.Send(payload)
+		}
+	}
+
 	return c.Send(map[string]interface{}{
 		"type": "subscribe",
 		"data": subscription,
 	})
+}
+
+func (c *AdminWebSocketClient) Emit(event string, data interface{}) {
+	c.mu.Lock()
+	handlers := c.eventHandlers[event]
+	c.mu.Unlock()
+
+	for _, handler := range handlers {
+		go handler(data)
+	}
 }
 
 // PaanjAdmin
